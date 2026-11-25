@@ -1,0 +1,49 @@
+config {
+  type: "view",
+  schema: "dental_staging",
+  description: "One row per contract per month, typed. Absorbs the schema changes between files: YEAR_MONTH arrives as 202603 and as 2026-04, LSOA11_CODE became LSOA21_CODE and BAND_URGENT_DELIVERED became BAND_UNSCHEDULED_DELIVERED from April 2026. Around 200 to 290 contracts a month are listed with a target and contract value but every activity field blank (no claims submitted that month): activity_reported is false for these and their activity counts are zero, so they still count against target.",
+  assertions: {
+    uniqueKey: ["contract_number", "activity_month"],
+    nonNull: ["contract_number", "activity_month", "commissioner_code", "uda_delivered", "uda_target_annual"],
+    rowConditions: [
+      "uda_delivered >= 0",
+      "uda_target_annual >= 0",
+      "courses_of_treatment >= 0",
+      "activity_month = parse_date('%Y%m%d', concat(file_month, '01'))"
+    ]
+  }
+}
+
+select
+  contract_number,
+  parse_date('%Y%m%d', concat(replace(year_month, '-', ''), '01')) as activity_month,
+  file_month,
+  source_file,
+  commissioner_code,
+  commissioner_name,
+  regexp_replace(trim(provider_name), r'\s+', ' ') as provider_name,
+  latest_ppc_address_postcode as postcode,
+  coalesce(lsoa21_code, lsoa11_code) as lsoa_code,
+  case when lsoa21_code is not null then '2021' else '2011' end as lsoa_vintage,
+  uda_delivered is not null as activity_reported,
+  safe_cast(uda_perf_target as float64) as uda_target_annual,
+  safe_cast(uda_fin_val as numeric) as uda_contract_value_annual,
+  safe_cast(general_dental_fin_value as numeric) as general_dental_value_annual,
+  coalesce(safe_cast(uda_delivered as float64), 0) as uda_delivered,
+  coalesce(safe_cast(uda_delivered_fd as float64), 0) as uda_delivered_foundation_dentists,
+  coalesce(safe_cast(late_submitted_fp17 as int64), 0) as late_fp17_claims,
+  coalesce(safe_cast(band_1_delivered as int64), 0) as band_1,
+  coalesce(safe_cast(band_2a_delivered as int64), 0) as band_2a,
+  coalesce(safe_cast(band_2b_delivered as int64), 0) as band_2b,
+  coalesce(safe_cast(band_2c_delivered as int64), 0) as band_2c,
+  coalesce(safe_cast(band_3_delivered as int64), 0) as band_3,
+  coalesce(safe_cast(coalesce(band_unscheduled_delivered, band_urgent_delivered) as int64), 0) as band_urgent_unscheduled,
+  coalesce(safe_cast(band_other_delivered as int64), 0) as band_other,
+  coalesce(safe_cast(band_1_delivered as int64), 0) + coalesce(safe_cast(band_2a_delivered as int64), 0)
+    + coalesce(safe_cast(band_2b_delivered as int64), 0) + coalesce(safe_cast(band_2c_delivered as int64), 0)
+    + coalesce(safe_cast(band_3_delivered as int64), 0)
+    + coalesce(safe_cast(coalesce(band_unscheduled_delivered, band_urgent_delivered) as int64), 0)
+    + coalesce(safe_cast(band_other_delivered as int64), 0) as courses_of_treatment,
+  coalesce(safe_cast(child_12m_count as int64), 0) as children_seen_12m,
+  coalesce(safe_cast(adult_24m_count as int64), 0) as adults_seen_24m
+from ${ref("raw_nhsbsa", "activity_monthly")}

@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+.pytest_cache/
+data/warehouse.duckdb*
+data/.dlt_pipelines/
+output/*.csv
+output/run_results.json
+.dlt/secrets.toml

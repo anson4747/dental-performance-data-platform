@@ -1,0 +1,7 @@
+dlt[duckdb,bigquery]==1.32.0
+duckdb==1.5.6
+sqlglot==30.31.0
+pandas>=2.2
+matplotlib>=3.9
+requests>=2.32
+pytest>=8.0

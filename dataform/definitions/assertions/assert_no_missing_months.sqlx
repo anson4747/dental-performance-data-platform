@@ -1,0 +1,9 @@
+config {
+  type: "assertion",
+  description: "The activity history has no gaps: every month between the first and the latest file is present."
+}
+
+select min(activity_month) as first_month, max(activity_month) as last_month,
+       count(distinct activity_month) as months_present
+from ${ref("fct_contract_month")}
+having count(distinct activity_month) <> date_diff(max(activity_month), min(activity_month), month) + 1

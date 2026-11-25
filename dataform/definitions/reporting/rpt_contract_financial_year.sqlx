@@ -1,0 +1,62 @@
+config {
+  type: "table",
+  schema: "dental_reporting",
+  description: "One row per contract per NHS financial year (April to March): UDAs delivered against the contract target, pro rated to the months the contract reported (a contract that opened or closed part way through the year is judged on its own months). FY2025-26 is complete; FY2026-27 runs to the latest month available.",
+  assertions: {
+    uniqueKey: ["contract_number", "financial_year"],
+    nonNull: ["delivery_band", "months_reported", "months_published"],
+    rowConditions: ["months_reported <= months_published", "months_published between 1 and 12"]
+  }
+}
+
+with published as (
+  select financial_year, count(distinct activity_month) as months_published
+  from ${ref("fct_contract_month")}
+  group by financial_year
+),
+
+latest_terms as (
+  select contract_number, financial_year, uda_target_annual, has_real_uda_target, value_per_uda, provider_name, provider_group
+  from ${ref("fct_contract_month")}
+  qualify row_number() over (partition by contract_number, financial_year order by activity_month desc) = 1
+),
+
+totals as (
+  select contract_number, financial_year, count(*) as months_reported,
+         sum(uda_delivered) as uda_delivered, sum(courses_of_treatment) as courses_of_treatment
+  from ${ref("fct_contract_month")}
+  group by contract_number, financial_year
+),
+
+scored as (
+  select
+    t.contract_number,
+    t.financial_year,
+    l.provider_name,
+    l.provider_group,
+    p.months_published,
+    t.months_reported,
+    p.months_published = 12 as is_complete_year,
+    t.courses_of_treatment,
+    t.uda_delivered,
+    l.uda_target_annual,
+    l.has_real_uda_target,
+    if(l.has_real_uda_target, l.uda_target_annual * t.months_reported / 12, null) as uda_target_to_date,
+    l.value_per_uda,
+    if(l.has_real_uda_target, safe_divide(t.uda_delivered, l.uda_target_annual * t.months_reported / 12), null) as delivery_pct
+  from totals t
+  join latest_terms l using (contract_number, financial_year)
+  join published p using (financial_year)
+)
+
+select
+  *,
+  case
+    when not has_real_uda_target then 'No real UDA target'
+    when delivery_pct >= 1 then 'At or above 100%'
+    when delivery_pct >= 0.96 then '96% to 100%'
+    else 'Below 96%'
+  end as delivery_band,
+  greatest(uda_target_to_date - uda_delivered, 0) as uda_shortfall,
+  greatest(uda_target_to_date - uda_delivered, 0) * value_per_uda as value_of_uda_shortfall
+from scored

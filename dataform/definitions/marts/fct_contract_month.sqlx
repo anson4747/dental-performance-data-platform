@@ -1,0 +1,62 @@
+config {
+  type: "table",
+  schema: "dental_marts",
+  description: "One row per contract per month. Contracts with a placeholder UDA target (below min_real_uda_target) carry no monthly target and no UDA value, so they cannot distort delivery %. Measure definitions are in docs/metric_definitions.md. provider_group is taken from the holder name in that month, so a practice sold to a group counts towards the group only from the month it changed hands.",
+  assertions: {
+    uniqueKey: ["contract_number", "activity_month"],
+    nonNull: ["financial_year", "provider_group", "uda_delivered", "courses_of_treatment"]
+  }
+}
+
+with grouped as (
+  select
+    a.*,
+    g.provider_group,
+    a.uda_target_annual >= ${dataform.projectConfig.vars.min_real_uda_target} as has_real_uda_target,
+    safe_divide(a.uda_contract_value_annual, a.uda_target_annual) as raw_value_per_uda
+  from ${ref("stg_activity")} a
+  left join ${ref("ref_provider_group")} g
+    on starts_with(lower(a.provider_name), g.name_prefix)
+),
+
+rated as (
+  select
+    *,
+    case
+      when has_real_uda_target
+       and raw_value_per_uda between ${dataform.projectConfig.vars.min_value_per_uda}
+                                 and ${dataform.projectConfig.vars.max_value_per_uda}
+      then raw_value_per_uda
+    end as value_per_uda
+  from grouped
+)
+
+select
+  contract_number,
+  activity_month,
+  concat('FY', cast(extract(year from activity_month) - if(extract(month from activity_month) < 4, 1, 0) as string),
+         '-', substr(cast(extract(year from activity_month) + if(extract(month from activity_month) < 4, 0, 1) as string), 3, 2)) as financial_year,
+  provider_name,
+  coalesce(provider_group, 'Independent and other') as provider_group,
+  commissioner_code,
+  commissioner_name,
+  uda_target_annual,
+  has_real_uda_target,
+  if(has_real_uda_target, uda_target_annual / 12, 0) as uda_target_monthly,
+  uda_contract_value_annual,
+  raw_value_per_uda,
+  value_per_uda,
+  activity_reported,
+  uda_delivered,
+  if(has_real_uda_target, uda_delivered, 0) as uda_delivered_against_target,
+  uda_delivered * value_per_uda as value_of_uda_delivered,
+  courses_of_treatment,
+  band_1,
+  band_2a + band_2b + band_2c as band_2,
+  band_3,
+  band_urgent_unscheduled,
+  band_other,
+  late_fp17_claims,
+  children_seen_12m,
+  adults_seen_24m
+from rated

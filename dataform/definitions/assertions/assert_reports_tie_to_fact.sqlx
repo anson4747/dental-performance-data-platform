@@ -1,0 +1,12 @@
+config {
+  type: "assertion",
+  description: "The group report and the financial year report carry the same UDAs as the fact table, so no contract or month is lost in the reporting joins."
+}
+
+with f as (select sum(uda_delivered) as uda from ${ref("fct_contract_month")}),
+     g as (select sum(uda_delivered) as uda from ${ref("rpt_group_monthly")}),
+     y as (select sum(uda_delivered) as uda from ${ref("rpt_contract_financial_year")})
+
+select f.uda as fact_uda, g.uda as group_report_uda, y.uda as year_report_uda
+from f cross join g cross join y
+where abs(f.uda - g.uda) > 0.01 or abs(f.uda - y.uda) > 0.01

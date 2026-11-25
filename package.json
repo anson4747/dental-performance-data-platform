@@ -1,0 +1,8 @@
+{
+  "name": "dental-performance-data-platform",
+  "private": true,
+  "description": "Dataform CLI for compiling the warehouse models",
+  "devDependencies": {
+    "@dataform/cli": "3.0.26"
+  }
+}

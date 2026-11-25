@@ -1,0 +1,12 @@
+config {
+  type: "assertion",
+  description: "Every numeric field that has a value in the raw file converts to a number. A failure means a new format arrived (thousands separators, a text placeholder) and staging would otherwise turn it into a blank."
+}
+
+select contract_number, file_month
+from ${ref("raw_nhsbsa", "activity_monthly")}
+where (uda_delivered is not null and safe_cast(uda_delivered as float64) is null)
+   or (uda_perf_target is not null and safe_cast(uda_perf_target as float64) is null)
+   or (uda_fin_val is not null and safe_cast(uda_fin_val as numeric) is null)
+   or (band_1_delivered is not null and safe_cast(band_1_delivered as int64) is null)
+   or (late_submitted_fp17 is not null and safe_cast(late_submitted_fp17 as int64) is null)

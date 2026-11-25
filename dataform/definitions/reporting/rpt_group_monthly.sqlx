@@ -1,0 +1,30 @@
+config {
+  type: "table",
+  schema: "dental_reporting",
+  description: "Dental group by month: practices reporting, courses of treatment, UDAs delivered against the monthly share of target, and the contract value those UDAs represent. This is the table the Looker Studio report reads.",
+  assertions: {
+    uniqueKey: ["provider_group", "activity_month"],
+    nonNull: ["contracts_reporting", "uda_delivered", "uda_target_monthly"]
+  }
+}
+
+select
+  provider_group,
+  activity_month,
+  financial_year,
+  count(*) as contracts_listed,
+  countif(activity_reported) as contracts_reporting,
+  sum(courses_of_treatment) as courses_of_treatment,
+  sum(band_1) as band_1,
+  sum(band_2) as band_2,
+  sum(band_3) as band_3,
+  sum(band_urgent_unscheduled) as band_urgent_unscheduled,
+  sum(uda_delivered) as uda_delivered,
+  sum(uda_delivered_against_target) as uda_delivered_against_target,
+  sum(uda_target_monthly) as uda_target_monthly,
+  safe_divide(sum(uda_delivered_against_target), sum(uda_target_monthly)) as uda_delivery_vs_pro_rata_target,
+  sum(value_of_uda_delivered) as value_of_uda_delivered,
+  sum(if(value_per_uda is not null, uda_contract_value_annual, 0)) / 12 as contract_value_monthly,
+  sum(late_fp17_claims) as late_fp17_claims
+from ${ref("fct_contract_month")}
+group by provider_group, activity_month, financial_year

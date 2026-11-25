@@ -1,0 +1,11 @@
+config {
+  type: "assertion",
+  description: "Every activity file's row count in the warehouse equals the rows read from the file. Returns the files that differ."
+}
+
+select m.source_file, m.rows_in_file, count(s.contract_number) as rows_in_staging
+from ${ref("raw_nhsbsa", "file_manifest")} m
+left join ${ref("stg_activity")} s on s.source_file = m.source_file
+where m.dataset = 'activity'
+group by m.source_file, m.rows_in_file
+having count(s.contract_number) <> m.rows_in_file

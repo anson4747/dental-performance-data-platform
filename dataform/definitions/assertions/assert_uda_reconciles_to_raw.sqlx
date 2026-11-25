@@ -1,0 +1,24 @@
+config {
+  type: "assertion",
+  description: "UDAs delivered and courses of treatment in the fact table add up, month by month, to the raw files as published."
+}
+
+with raw as (
+  select file_month,
+         sum(safe_cast(uda_delivered as float64)) as uda,
+         count(*) as contract_rows
+  from ${ref("raw_nhsbsa", "activity_monthly")}
+  group by file_month
+),
+fact as (
+  select format_date('%Y%m', activity_month) as file_month, sum(uda_delivered) as uda, count(*) as contract_rows
+  from ${ref("fct_contract_month")}
+  group by 1
+)
+
+select coalesce(r.file_month, f.file_month) as file_month, r.uda as raw_uda, f.uda as fact_uda
+from raw r
+full outer join fact f using (file_month)
+where r.uda is null or f.uda is null
+   or abs(r.uda - f.uda) > 0.01
+   or r.contract_rows <> f.contract_rows

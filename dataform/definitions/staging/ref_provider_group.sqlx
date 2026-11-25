@@ -1,0 +1,17 @@
+config {
+  type: "table",
+  schema: "dental_staging",
+  description: "Maps contract holder names to the dental group that owns them. Rules are data: a new group or a renamed company adds a row here, not a CASE branch. Names are matched case-insensitively against the start of the provider name.",
+  assertions: { uniqueKey: ["name_prefix"], nonNull: ["name_prefix", "provider_group"] }
+}
+
+select 'whitecross dental care' as name_prefix, 'Whitecross Dental Care' as provider_group union all
+select 'rodericks dental', 'Rodericks Dental Partners' union all
+select 'oasis dental care', 'Oasis Dental Care' union all
+select 'idh limited', 'IDH (mydentist)' union all
+select 'integrated dental holdings', 'IDH (mydentist)' union all
+select 'petrie tucker', 'Petrie Tucker & Partners' union all
+select 'damira dental', 'Damira Dental Studios' union all
+select 'colosseum dental', 'Colosseum Dental' union all
+select 'genix healthcare', 'Genix Healthcare' union all
+select 'park dental group', 'Park Dental Group'

@@ -1,0 +1,74 @@
+config {
+  type: "table",
+  schema: "dental_marts",
+  description: "Everything in the source data that needs a person to look at it. Nothing here is silently dropped from the reports: each row says what was found and what the reports do with it."
+}
+
+with latest_month as (
+  select max(activity_month) as m from ${ref("fct_contract_month")}
+),
+latest_snapshot as (
+  select max(snapshot_month) as m from ${ref("stg_contract_snapshots")}
+)
+
+select 'stopped_reporting' as exception_type, contract_number, cast(null as string) as source_file,
+       concat('Last reported ', cast(last_reported_month as string), '; kept in history, excluded from later months.') as detail
+from ${ref("dim_contract")}
+where reporting_status = 'Stopped reporting'
+
+union all
+
+select 'no_real_uda_target', contract_number, cast(null as string),
+       concat(cast(count(*) as string), ' month(s) with a UDA target of ', cast(max(uda_target_annual) as string),
+              ' or less; excluded from delivery % and UDA value.')
+from ${ref("fct_contract_month")}
+where not has_real_uda_target and uda_delivered > 0
+group by contract_number
+
+union all
+
+select 'implausible_value_per_uda', contract_number, cast(null as string),
+       concat('Value per UDA of ', cast(round(max(raw_value_per_uda), 2) as string),
+              ' is outside the configured range; UDA value left blank.')
+from ${ref("fct_contract_month")}
+where has_real_uda_target and value_per_uda is null and raw_value_per_uda is not null
+group by contract_number
+
+union all
+
+select 'no_activity_reported', contract_number, cast(null as string),
+       concat(cast(count(*) as string), ' month(s) listed with a target but no claims submitted; counted as zero UDAs delivered.')
+from ${ref("fct_contract_month")}
+where not activity_reported
+group by contract_number
+
+union all
+
+select 'not_in_latest_contract_snapshot', f.contract_number, cast(null as string),
+       'Reported activity in the latest month but has no line in the latest contract snapshot.'
+from ${ref("fct_contract_month")} f
+cross join latest_month lm
+where f.activity_month = lm.m
+  and f.contract_number not in (
+    select contract_number from ${ref("stg_contract_snapshots")}
+    where snapshot_month = (select m from latest_snapshot)
+  )
+
+union all
+
+select 'commissioner_changed', contract_number, cast(null as string),
+       concat('Commissioner changed from ', previous_commissioner_code, ' to ', commissioner_code,
+              ' (', commissioner_name, ') from ', cast(valid_from as string), '.')
+from (
+  select *, lag(commissioner_code) over (partition by contract_number order by version) as previous_commissioner_code
+  from ${ref("dim_contract_history")}
+)
+where previous_commissioner_code is not null
+  and previous_commissioner_code <> commissioner_code
+
+union all
+
+select 'non_utf8_source_file', cast(null as string), source_file,
+       concat('Decoded as ', encoding, ' instead of UTF-8; ', cast(rows_in_file as string), ' rows loaded.')
+from ${ref("raw_nhsbsa", "file_manifest")}
+where encoding <> 'utf-8'

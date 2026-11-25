@@ -1,0 +1,59 @@
+config {
+  type: "table",
+  schema: "dental_marts",
+  description: "SCD Type 2 history of each contract's holder name, commissioner and postcode, built from the monthly activity files. A new version starts in the month any of them changes, for example when a practice is sold or when ICBs merged in April 2026.",
+  assertions: {
+    uniqueKey: ["contract_number", "version"],
+    nonNull: ["contract_number", "valid_from", "provider_name", "commissioner_code"]
+  }
+}
+
+with monthly as (
+  select
+    contract_number,
+    activity_month,
+    provider_name,
+    commissioner_code,
+    commissioner_name,
+    postcode,
+    concat(coalesce(provider_name, ''), '|', coalesce(commissioner_code, ''), '|', coalesce(postcode, '')) as attribute_key
+  from ${ref("stg_activity")}
+),
+
+flagged as (
+  select
+    *,
+    case
+      when lag(attribute_key) over (partition by contract_number order by activity_month) = attribute_key then 0
+      else 1
+    end as starts_version
+  from monthly
+),
+
+versioned as (
+  select
+    *,
+    sum(starts_version) over (partition by contract_number order by activity_month
+                              rows between unbounded preceding and current row) as version
+  from flagged
+),
+
+versions as (
+  select
+    contract_number,
+    version,
+    any_value(provider_name) as provider_name,
+    any_value(commissioner_code) as commissioner_code,
+    any_value(commissioner_name) as commissioner_name,
+    any_value(postcode) as postcode,
+    min(activity_month) as valid_from,
+    max(activity_month) as last_reported_month
+  from versioned
+  group by contract_number, version
+)
+
+select
+  *,
+  lead(valid_from) over (partition by contract_number order by version) as valid_to,
+  lead(valid_from) over (partition by contract_number order by version) is null as is_current
+from versions

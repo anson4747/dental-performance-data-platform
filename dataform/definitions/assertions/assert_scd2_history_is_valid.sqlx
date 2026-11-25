@@ -1,0 +1,15 @@
+config {
+  type: "assertion",
+  description: "Each contract has exactly one current version and its versions do not overlap."
+}
+
+select contract_number, 'not exactly one current version' as problem
+from ${ref("dim_contract_history")}
+group by contract_number
+having countif(is_current) <> 1
+
+union all
+
+select contract_number, 'versions overlap'
+from ${ref("dim_contract_history")}
+where valid_to is not null and valid_to <= valid_from

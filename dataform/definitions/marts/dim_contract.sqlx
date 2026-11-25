@@ -1,0 +1,51 @@
+config {
+  type: "table",
+  schema: "dental_marts",
+  description: "Current view of each contract: latest holder and commissioner, group, reporting span and the dates from the latest contract snapshot it appears in.",
+  assertions: { uniqueKey: ["contract_number"], nonNull: ["provider_group", "reporting_status"] }
+}
+
+with span as (
+  select contract_number, min(activity_month) as first_reported_month,
+         max(activity_month) as last_reported_month, count(*) as months_reported
+  from ${ref("fct_contract_month")}
+  group by contract_number
+),
+
+latest_group as (
+  select contract_number, provider_group
+  from ${ref("fct_contract_month")}
+  qualify row_number() over (partition by contract_number order by activity_month desc) = 1
+),
+
+latest_snapshot as (
+  select *
+  from ${ref("stg_contract_snapshots")}
+  qualify row_number() over (partition by contract_number order by snapshot_month desc) = 1
+),
+
+latest_month as (
+  select max(activity_month) as latest_month from ${ref("fct_contract_month")}
+)
+
+select
+  h.contract_number,
+  h.provider_name,
+  g.provider_group,
+  h.commissioner_code,
+  h.commissioner_name,
+  h.postcode,
+  s.first_reported_month,
+  s.last_reported_month,
+  s.months_reported,
+  case when s.last_reported_month = m.latest_month then 'Reporting' else 'Stopped reporting' end as reporting_status,
+  c.snapshot_month as latest_contract_snapshot,
+  c.contract_start_date,
+  c.latest_end_date,
+  c.contract_lines
+from ${ref("dim_contract_history")} h
+join span s using (contract_number)
+join latest_group g using (contract_number)
+cross join latest_month m
+left join latest_snapshot c using (contract_number)
+where h.is_current

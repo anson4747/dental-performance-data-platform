@@ -1,0 +1,13 @@
+defaultProject: your-gcp-project-id
+defaultLocation: europe-west2
+defaultDataset: dental_analytics
+defaultAssertionDataset: dental_assertions
+dataformCoreVersion: 3.0.26
+vars:
+  # A UDA target below this is a placeholder (block funded contracts such as
+  # dental schools carry a target of 1). These contracts are excluded from
+  # delivery % and UDA value, and listed in dq_exceptions.
+  min_real_uda_target: "100"
+  # Value per UDA outside this range is treated as not a usable UDA rate.
+  min_value_per_uda: "15"
+  max_value_per_uda: "200"

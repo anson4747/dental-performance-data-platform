@@ -1,0 +1,32 @@
+config {
+  type: "view",
+  schema: "dental_staging",
+  description: "One row per contract per snapshot. A contract can have several lines in one snapshot (one per contract period or variation), so lines are rolled up to the earliest start and latest end date. START_DATE and END_DATE arrive as dd/mm/yyyy up to March 2026 and as yyyy-mm-dd from July 2026.",
+  assertions: {
+    uniqueKey: ["contract_number", "snapshot_month"],
+    nonNull: ["contract_number", "snapshot_month", "contract_start_date"]
+  }
+}
+
+with lines as (
+  select
+    contract_number,
+    parse_date('%Y%m%d', concat(file_month, '01')) as snapshot_month,
+    coalesce(safe.parse_date('%d/%m/%Y', start_date), safe.parse_date('%Y-%m-%d', start_date)) as start_date,
+    coalesce(safe.parse_date('%d/%m/%Y', end_date), safe.parse_date('%Y-%m-%d', end_date)) as end_date,
+    coalesce(recurring_indicator, recurring_ind) as recurring_flag,
+    prison_ind
+  from ${ref("raw_nhsbsa", "contract_snapshots")}
+)
+
+select
+  contract_number,
+  snapshot_month,
+  min(start_date) as contract_start_date,
+  max(end_date) as latest_end_date,
+  logical_or(end_date is null) as has_open_ended_line,
+  max(recurring_flag) as recurring_flag,
+  max(prison_ind) = 'Y' as is_prison_contract,
+  count(*) as contract_lines
+from lines
+group by contract_number, snapshot_month
